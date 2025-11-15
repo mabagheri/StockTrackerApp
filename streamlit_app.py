@@ -42,7 +42,7 @@ lookbacks_selected = st.sidebar.multiselect(
 run_app = st.sidebar.button("🚀 Run Analysis", type="primary")
 
 # -----------------------
-# Only run logic when button is pressed
+# Only run logic when the button is pressed
 # -----------------------
 if run_app:
 
@@ -56,10 +56,10 @@ if run_app:
 
     # Filter market cap
     def cap_filter(cap):
-        if cap == "Mega": return 200_000_000_000
-        if cap == "Large": return 10_000_000_000
-        if cap == "Mid": return 2_000_000_000
-        if cap == "Small": return 300_000_000
+        if cap == "Mega": return 200
+        if cap == "Large": return 10
+        if cap == "Mid": return 2
+        if cap == "Small": return 0.3
         return 0
 
     # Apply market cap filtering
@@ -68,9 +68,9 @@ if run_app:
 
     # Folder based on index
     folder_map = {
-        "SP500": "Data/SP500",
-        "Nasdaq100": "Data/Nasdaq100",
-        "TSX": "Data/TSX"
+        "SP500": "Stock_data/SP500",
+        "Nasdaq100": "Stock_data/Nasdaq100",
+        "TSX": "Stock_data/TSX"
     }
     data_folder = folder_map[index_choice]
 
