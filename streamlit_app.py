@@ -49,7 +49,7 @@ if run_app:
     st.write(f"### 📊 Results for {index_choice}")
 
     # Load Excel (already in repo)
-    excel_path = "Data/metadata.xlsx"
+    excel_path = "Stock_data/Tickers_Info.xlsx"
     df_meta = pd.read_excel(excel_path, sheet_name=index_choice)
 
     tickers = df_meta["Ticker"].dropna().unique().tolist()
