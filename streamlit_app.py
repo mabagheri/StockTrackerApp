@@ -17,39 +17,32 @@ LOOKBACK_OPTIONS = {
     "1 Year": 365
 }
 
-# ---------- FUNCTIONS ----------
+EXCEL_PATH = "Data/IndexList.xlsx"
+CSV_ROOT = "Data"
+
+# ---------- CACHED FUNCTIONS ----------
+@st.cache_data(show_spinner=False)
+def load_index_tickers(sheet_name):
+    """Load tickers from the specified index sheet."""
+    df = pd.read_excel(EXCEL_PATH, sheet_name=sheet_name)
+    df = df.dropna(subset=["Ticker"])
+    return df["Ticker"].unique().tolist()
 
 @st.cache_data(show_spinner=False)
-def load_excel(file) -> list:
-    """Load list of tickers from uploaded Excel file."""
-    df = pd.read_excel(file)
-    return df["Ticker"].dropna().unique().tolist()
-
-@st.cache_data(show_spinner=False)
-def load_local_csv(ticker: str, csv_folder: str) -> pd.DataFrame:
-    """Load historical data from local CSV."""
-    path = os.path.join(csv_folder, f"{ticker}.csv")
+def load_local_csv(ticker: str, folder: str) -> pd.DataFrame:
+    path = os.path.join(folder, f"{ticker}.csv")
     if not os.path.exists(path):
         return pd.DataFrame()
     df = pd.read_csv(path, parse_dates=["Date"])
-    return df[df["Date"] <= pd.Timestamp("2025-11-01")]
+    return df
 
 @st.cache_data(show_spinner=False)
 def fetch_latest_data(ticker: str, start_date: datetime, end_date: datetime) -> pd.DataFrame:
-    """Fetch latest stock data from Yahoo Finance."""
     df_new = yf.download(ticker, start=start_date, end=end_date)
     df_new.reset_index(inplace=True)
     return df_new.rename(columns={"Date": "Date"})
 
-def combine_data(df_old, df_new):
-    """Merge old and new data."""
-    if df_old.empty:
-        return df_new
-    df_all = pd.concat([df_old, df_new], ignore_index=True).drop_duplicates(subset=["Date"])
-    return df_all
-
 def compute_drop(df_all: pd.DataFrame, n_days: int):
-    """Compute current price, highest price in last n days, and drop %."""
     cutoff = datetime.today() - timedelta(days=n_days)
     df_window = df_all[df_all["Date"] >= cutoff]
     if df_window.empty:
@@ -57,90 +50,97 @@ def compute_drop(df_all: pd.DataFrame, n_days: int):
     current_price = df_window.iloc[-1]["Close"]
     highest_price = df_window["Close"].max()
     drop_pct = (current_price - highest_price) / highest_price * 100
-    return round(current_price, 2), round(highest_price, 2), round(drop_pct, 2), df_window
+    return round(drop_pct, 2), df_window  # return drop only
 
 
 # ---------- UI ----------
-excel_file = st.file_uploader("📂 Upload Excel file with 'Ticker' column", type=["xlsx"])
-csv_folder = st.text_input("📁 Enter folder path where your CSV files are stored (one CSV per ticker)")
+index_choice = st.radio("📈 Select Index", ["Nasdaq100", "SP500", "SP500_TSX"])
+selected_windows = st.multiselect(
+    "⏳ Select Lookback Periods (choose multiple)",
+    list(LOOKBACK_OPTIONS.keys()),
+    default=["1 Month", "6 Months"]
+)
 
-n_option = st.selectbox("Select lookback period", list(LOOKBACK_OPTIONS.keys()))
-n_days = LOOKBACK_OPTIONS[n_option]
+refresh_data = st.button("🔄 Refresh All Data (Update from Yahoo Finance)")
 
-refresh_data = st.button("🔄 Refresh All (Download Latest Prices)")
+if not selected_windows:
+    st.warning("Please select at least one lookback window.")
+    st.stop()
 
 # ---------- MAIN ----------
-if excel_file and csv_folder:
-    tickers = load_excel(excel_file)
-    today = datetime.today().date()
-    start_date = datetime(2025, 11, 2).date()
+tickers = load_index_tickers(index_choice)
+csv_folder = os.path.join(CSV_ROOT, index_choice)
 
-    results = []
-    chart_data = {}
+today = datetime.today().date()
+start_date = datetime(2025, 11, 2).date()
 
-    st.write(f"Processing **{len(tickers)}** tickers...")
+results = []
+chart_data = {}
 
-    for ticker in tickers:
-        df_old = load_local_csv(ticker, csv_folder)
+st.write(f"Processing **{len(tickers)}** tickers from {index_choice}...")
 
-        if refresh_data:
-            with st.spinner(f"Fetching latest data for {ticker}..."):
-                df_new = fetch_latest_data(ticker, start_date, today + timedelta(days=1))
-                st.cache_data.clear()  # clear cache to allow new data
-        else:
-            df_new = pd.DataFrame()
+for ticker in tickers:
+    df_old = load_local_csv(ticker, csv_folder)
 
-        df_all = combine_data(df_old, df_new)
-
-        if df_all.empty:
-            st.warning(f"No data found for {ticker}, skipping.")
-            continue
-
-        result = compute_drop(df_all, n_days)
-        if not result:
-            continue
-
-        current_price, highest_price, drop_pct, df_window = result
-        results.append({
-            "Ticker": ticker,
-            "Current Price": current_price,
-            f"Highest ({n_option})": highest_price,
-            f"Drop % ({n_option})": drop_pct
-        })
-        chart_data[ticker] = df_window[["Date", "Close"]]
-
-    if results:
-        df_results = pd.DataFrame(results)
-        drop_col = f"Drop % ({n_option})"
-
-        # --- Color gradient style ---
-        styled_df = (
-            df_results.style
-            .background_gradient(subset=[drop_col], cmap='RdYlGn_r', vmin=-50, vmax=0)
-            .format({drop_col: "{:.2f}%"})
-        )
-
-        st.subheader("📋 Summary Table")
-        st.dataframe(styled_df, use_container_width=True)
-
-        # --- Download button ---
-        csv_buffer = io.StringIO()
-        df_results.to_csv(csv_buffer, index=False)
-        st.download_button(
-            label="💾 Download Results as CSV",
-            data=csv_buffer.getvalue(),
-            file_name="stock_drop_summary.csv",
-            mime="text/csv"
-        )
-
-        # --- Charts ---
-        st.subheader("📈 Price Charts (Last Period)")
-        for ticker, df_plot in chart_data.items():
-            st.markdown(f"**{ticker}**")
-            st.line_chart(df_plot.set_index("Date")["Close"])
-
+    # If user clicked refresh, fetch latest data
+    if refresh_data:
+        df_new = fetch_latest_data(ticker, start_date, today + timedelta(days=1))
+        df_all = pd.concat([df_old, df_new]).drop_duplicates(subset=["Date"])
     else:
-        st.info("No data available yet.")
+        df_all = df_old.copy()
+
+    if df_all.empty:
+        continue
+
+    row_result = {"Ticker": ticker}
+
+    max_drop = None
+
+    for period in selected_windows:
+        n_days = LOOKBACK_OPTIONS[period]
+        drop_result = compute_drop(df_all, n_days)
+        if not drop_result:
+            continue
+
+        drop_pct, df_window = drop_result
+        row_result[f"Drop {period}"] = drop_pct
+
+        # track max (worst) drop
+        if max_drop is None or drop_pct < max_drop:
+            max_drop = drop_pct
+            chart_data[ticker] = df_window[["Date", "Close"]]
+
+    row_result["Max Drop"] = max_drop
+    results.append(row_result)
+
+# ---------- DISPLAY ----------
+if results:
+    df_results = pd.DataFrame(results)
+
+    # Apply gradient to Max Drop
+    styled = (
+        df_results.style
+        .background_gradient(subset=["Max Drop"], cmap="RdYlGn_r", vmin=-50, vmax=0)
+    )
+
+    st.subheader("📋 Drop Summary Table (Max Drop Across Selected Windows)")
+    st.dataframe(styled, use_container_width=True)
+
+    # CSV download
+    csv_buffer = io.StringIO()
+    df_results.to_csv(csv_buffer, index=False)
+    st.download_button(
+        label="💾 Download Summary CSV",
+        data=csv_buffer.getvalue(),
+        file_name=f"{index_choice}_drop_summary.csv",
+        mime="text/csv"
+    )
+
+    # Charts
+    st.subheader("📈 Price Chart for Ticker with Max Drop")
+    for ticker, df_plot in chart_data.items():
+        st.markdown(f"### {ticker}")
+        st.line_chart(df_plot.set_index("Date")["Close"])
 
 else:
-    st.warning("Please upload your Excel file and specify the CSV folder path.")
+    st.info("No valid data found for selected index.")
