@@ -63,7 +63,7 @@ if run_app:
         return 0
 
     # Apply market cap filtering
-    mc_filtered = df_meta[df_meta["MarketCapCategory"].isin(marketcap_choice)]
+    mc_filtered = df_meta[df_meta["MarketCap"].isin(marketcap_choice)]
     tickers = mc_filtered["Ticker"].tolist()
 
     # Folder based on index
