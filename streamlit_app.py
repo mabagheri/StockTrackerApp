@@ -82,6 +82,7 @@ if run_app:
     for t in tickers:
         csv_path = f"{data_folder}/{t}.csv"
         if not os.path.exists(csv_path):
+            st.write(csv_path)
             continue
 
         df = pd.read_csv(csv_path, parse_dates=["Date"])
