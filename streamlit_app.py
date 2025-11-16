@@ -4,6 +4,8 @@ import yfinance as yf
 import os
 from datetime import datetime, timedelta
 
+metadata_excel_path = "Tickers_Info.xlsx"
+
 st.set_page_config(page_title="Stock Drop Dashboard", layout="wide")
 
 # -----------------------
@@ -39,18 +41,18 @@ lookbacks_selected = st.sidebar.multiselect(
 # -----------------------
 # RUN BUTTON
 # -----------------------
-run_app = st.sidebar.button("🚀 Run Analysis", type="primary")
+run_app = st.button("🚀 Run Analysis", type="primary")
 
 # -----------------------
 # Only run logic when the button is pressed
 # -----------------------
 if run_app:
-
-    st.write(f"### 📊 Results for {index_choice}")
-
-    # Load Excel (already in repo)
-    excel_path = "Tickers_Info.xlsx"
-    df_meta = pd.read_excel(excel_path, sheet_name=index_choice)
+    # --- Load ticker info ---
+    try:
+        df_meta = pd.read_excel(metadata_excel_path, sheet_name=index_choice)
+    except Exception as e:
+        st.error(f"Error reading Excel file: {e}")
+        st.stop()
 
     tickers = df_meta["Ticker"].dropna().unique().tolist()
 
@@ -115,6 +117,7 @@ if run_app:
     # -----------------------
     # Display results
     # -----------------------
+    st.write(f"### 📊 Results for {index_choice}")
     st.dataframe(df_summary, use_container_width=True)
 
     # Download CSV
